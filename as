@@ -1,7 +1,7 @@
 --[[
 	Tác giả: Gemini
 	Mô tả: Script cho phép người chơi trở thành Stand cho một người chơi khác.
-	Người chơi (Stand) sẽ có giao diện để chọn "Stand User" và tự động đi theo họ.
+	Người chơi (Stand) sẽ có giao diện để chọn "Stand User", đi theo sau hoặc di chuyển ra trước mặt họ.
 ]]
 
 -- Dịch vụ cần thiết
@@ -17,6 +17,7 @@ local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
 
 -- Biến trạng thái
 local isFollowing = false -- Trạng thái đang đi theo Stand User
+local isOraActive = false -- Trạng thái ORA ORA (đứng trước mặt)
 local standUser = nil -- Người chơi được chọn làm Stand User
 local isGuiMinimized = false -- Trạng thái GUI có bị thu nhỏ không
 
@@ -31,8 +32,8 @@ local function createStandControlGui()
 
 	local mainFrame = Instance.new("Frame")
 	mainFrame.Name = "MainFrame"
-	mainFrame.Size = UDim2.new(0, 200, 0, 250) -- Kích thước ban đầu
-	mainFrame.Position = UDim2.new(0, 10, 0.5, -125)
+	mainFrame.Size = UDim2.new(0, 200, 0, 300) -- Tăng chiều cao cho nút mới
+	mainFrame.Position = UDim2.new(0, 10, 0.5, -150) -- Điều chỉnh vị trí
 	mainFrame.BackgroundColor3 = Color3.fromRGB(31, 31, 31)
 	mainFrame.BorderColor3 = Color3.fromRGB(120, 0, 255)
 	mainFrame.BorderSizePixel = 2
@@ -104,6 +105,18 @@ local function createStandControlGui()
 	onOffButton.TextSize = 18
 	onOffButton.Parent = mainFrame
 
+	-- Nút ORA ORA mới
+	local oraButton = Instance.new("TextButton")
+	oraButton.Name = "OraButton"
+	oraButton.Size = UDim2.new(1, -20, 0, 40)
+	oraButton.Position = UDim2.new(0, 10, 0, 240)
+	oraButton.BackgroundColor3 = Color3.fromRGB(80, 80, 200)
+	oraButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	oraButton.Font = Enum.Font.SourceSansBold
+	oraButton.Text = "ORA ORA: OFF"
+	oraButton.TextSize = 18
+	oraButton.Parent = mainFrame
+
 	-- Logic cập nhật danh sách người chơi
 	local function updatePlayerList()
 		playerListFrame.Visible = true
@@ -140,6 +153,7 @@ local function createStandControlGui()
 		
 		nameTextBox.Visible = not isGuiMinimized
 		onOffButton.Visible = not isGuiMinimized
+		oraButton.Visible = not isGuiMinimized -- Thêm nút ora vào logic
 		if playerListFrame.Visible then
 			playerListFrame.Visible = not isGuiMinimized
 		end
@@ -149,7 +163,7 @@ local function createStandControlGui()
 			mainFrame:TweenSize(UDim2.new(0, 200, 0, 30), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
 		else
 			minimizeButton.Text = "-"
-			mainFrame:TweenSize(UDim2.new(0, 200, 0, 250), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
+			mainFrame:TweenSize(UDim2.new(0, 200, 0, 300), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
 		end
 	end)
 
@@ -173,6 +187,26 @@ local function createStandControlGui()
 		else
 			onOffButton.Text = "FOLLOW: OFF"
 			onOffButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+			-- Tắt ORA khi tắt Follow
+			isOraActive = false
+			oraButton.Text = "ORA ORA: OFF"
+			oraButton.BackgroundColor3 = Color3.fromRGB(80, 80, 200)
+		end
+	end)
+
+	oraButton.MouseButton1Click:Connect(function()
+		if not isFollowing then
+			print("Cần bật FOLLOW trước khi dùng ORA ORA!")
+			return
+		end
+		
+		isOraActive = not isOraActive
+		if isOraActive then
+			oraButton.Text = "ORA ORA: ON"
+			oraButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0) -- Màu cam
+		else
+			oraButton.Text = "ORA ORA: OFF"
+			oraButton.BackgroundColor3 = Color3.fromRGB(80, 80, 200) -- Màu xanh
 		end
 	end)
 
@@ -197,13 +231,19 @@ RunService.RenderStepped:Connect(function()
 		return
 	end
 
-	-- Lấy CFrame của Stand User
 	local userRoot = standUser.Character.HumanoidRootPart
 	local userCFrame = userRoot.CFrame
+	local standTargetCFrame
 	
-	-- Tính toán vị trí phía sau và hơi lệch sang phải của Stand User
-	local offset = CFrame.new(2, 0, 4) -- Khoảng cách như trong ảnh
-	local standTargetCFrame = userCFrame * offset
+	if isOraActive then
+		-- Chế độ ORA ORA: Đứng trước mặt Stand User
+		local offset = CFrame.new(0, 0, -5) -- Khoảng cách 5 stud ở phía trước
+		standTargetCFrame = userCFrame * offset
+	else
+		-- Chế độ Follow: Đứng phía sau Stand User
+		local offset = CFrame.new(2, 0, 4) -- Khoảng cách như trong ảnh
+		standTargetCFrame = userCFrame * offset
+	end
 	
 	-- Di chuyển nhân vật của bạn đến vị trí đó
 	character:SetPrimaryPartCFrame(standTargetCFrame)
@@ -212,11 +252,21 @@ end)
 -- Xử lý khi người chơi chết và hồi sinh
 localPlayer.CharacterAdded:Connect(function(newChar)
 	character = newChar
-	-- Tắt chế độ follow khi chết để tránh lỗi
+	-- Tắt các chế độ khi chết để tránh lỗi
 	isFollowing = false
-	local onOffButton = standGui:FindFirstChild("MainFrame"):FindFirstChild("OnOffButton")
-	if onOffButton then
-		onOffButton.Text = "FOLLOW: OFF"
-		onOffButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	isOraActive = false
+	
+	local mainFrame = standGui:FindFirstChild("MainFrame")
+	if mainFrame then
+		local onOffButton = mainFrame:FindFirstChild("OnOffButton")
+		local oraButton = mainFrame:FindFirstChild("OraButton")
+		if onOffButton then
+			onOffButton.Text = "FOLLOW: OFF"
+			onOffButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+		end
+		if oraButton then
+			oraButton.Text = "ORA ORA: OFF"
+			oraButton.BackgroundColor3 = Color3.fromRGB(80, 80, 200)
+		end
 	end
 end)
