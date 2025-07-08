@@ -1,272 +1,278 @@
---[[
-	Tác giả: Gemini
-	Mô tả: Script cho phép người chơi trở thành Stand cho một người chơi khác.
-	Người chơi (Stand) sẽ có giao diện để chọn "Stand User", đi theo sau hoặc di chuyển ra trước mặt họ.
-]]
+-- =================================================================
+-- Script làm Stand cho người khác
+-- Tạo bởi AI theo yêu cầu của bạn
+-- =================================================================
 
--- Dịch vụ cần thiết
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
 
--- Người chơi cục bộ (người sẽ làm Stand) và nhân vật
 local localPlayer = Players.LocalPlayer
-local playerGui = localPlayer:WaitForChild("PlayerGui")
-local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
 
--- Biến trạng thái
-local isFollowing = false -- Trạng thái đang đi theo Stand User
-local isOraActive = false -- Trạng thái ORA ORA (đứng trước mặt)
-local standUser = nil -- Người chơi được chọn làm Stand User
-local isGuiMinimized = false -- Trạng thái GUI có bị thu nhỏ không
+-- Các biến trạng thái
+local isEnabled = false -- Script đang bật hay tắt
+local targetPlayer = nil -- Người chơi mục tiêu (Stand User)
+local currentMode = "behind" -- Chế độ theo sau: 'behind' (đằng sau) hoặc 'ora' (đằng trước)
+local isShrunk = false -- Bạn có đang bị thu nhỏ hay không
 
 -- =================================================================
--- PHẦN 1: TẠO GIAO DIỆN NGƯỜI DÙNG (GUI)
+-- TẠO GIAO DIỆN ĐIỀU KHIỂN (GUI)
 -- =================================================================
-local function createStandControlGui()
-	-- Tạo các thành phần GUI
-	local screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "StandControlGui"
-	screenGui.ResetOnSpawn = false
 
-	local mainFrame = Instance.new("Frame")
-	mainFrame.Name = "MainFrame"
-	mainFrame.Size = UDim2.new(0, 200, 0, 300) -- Tăng chiều cao cho nút mới
-	mainFrame.Position = UDim2.new(0, 10, 0.5, -150) -- Điều chỉnh vị trí
-	mainFrame.BackgroundColor3 = Color3.fromRGB(31, 31, 31)
-	mainFrame.BorderColor3 = Color3.fromRGB(120, 0, 255)
-	mainFrame.BorderSizePixel = 2
-	mainFrame.ClipsDescendants = true
-	mainFrame.Parent = screenGui
+-- Tạo ScreenGui để chứa tất cả
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "StandControllerGui"
+screenGui.ResetOnSpawn = false -- Không reset GUI khi chết
+screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 
-	local titleFrame = Instance.new("Frame")
-	titleFrame.Name = "TitleFrame"
-	titleFrame.Size = UDim2.new(1, 0, 0, 30)
-	titleFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-	titleFrame.Parent = mainFrame
+-- Tạo khung chính
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 200, 0, 300)
+mainFrame.Position = UDim2.new(0, 10, 0.5, -150) -- Đặt ở giữa bên trái
+mainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+mainFrame.BorderColor3 = Color3.fromRGB(150, 90, 255)
+mainFrame.BorderSizePixel = 2
+mainFrame.Parent = screenGui
 
-	local titleLabel = Instance.new("TextLabel")
-	titleLabel.Name = "Title"
-	titleLabel.Size = UDim2.new(1, 0, 1, 0)
-	titleLabel.BackgroundColor3 = Color3.new(1, 1, 1)
-	titleLabel.BackgroundTransparency = 1
-	titleLabel.TextColor3 = Color3.fromRGB(170, 85, 255)
-	titleLabel.Font = Enum.Font.SourceSansBold
-	titleLabel.Text = "TRỞ THÀNH STAND"
-	titleLabel.TextSize = 18
-	titleLabel.Parent = titleFrame
+-- Tạo tiêu đề
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "Title"
+titleLabel.Size = UDim2.new(1, 0, 0, 30)
+titleLabel.BackgroundColor3 = Color3.fromRGB(150, 90, 255)
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextSize = 18
+titleLabel.Text = "Stand Jojo"
+titleLabel.Parent = mainFrame
 
-	local minimizeButton = Instance.new("TextButton")
-	minimizeButton.Name = "MinimizeButton"
-	minimizeButton.Size = UDim2.new(0, 25, 0, 25)
-	minimizeButton.Position = UDim2.new(1, -28, 0.5, -12.5)
-	minimizeButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-	minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	minimizeButton.Font = Enum.Font.SourceSansBold
-	minimizeButton.Text = "-"
-	minimizeButton.TextSize = 20
-	minimizeButton.Parent = titleFrame
+-- Hộp nhập tên
+local nameInput = Instance.new("TextBox")
+nameInput.Name = "NameInput"
+nameInput.Size = UDim2.new(1, -10, 0, 30)
+nameInput.Position = UDim2.new(0, 5, 0, 40)
+nameInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+nameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+nameInput.Font = Enum.Font.SourceSans
+nameInput.TextSize = 14
+nameInput.Text = ""
+nameInput.PlaceholderText = "Nhập tên người chơi..."
+nameInput.ClearTextOnFocus = false
+nameInput.Parent = mainFrame
 
-	local nameTextBox = Instance.new("TextBox")
-	nameTextBox.Name = "NameTextBox"
-	nameTextBox.Size = UDim2.new(1, -20, 0, 40)
-	nameTextBox.Position = UDim2.new(0, 10, 0, 40)
-	nameTextBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	nameTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-	nameTextBox.PlaceholderText = "Chọn Stand User..."
-	nameTextBox.Font = Enum.Font.SourceSans
-	nameTextBox.TextSize = 16
-	nameTextBox.ClearTextOnFocus = false
-	nameTextBox.Parent = mainFrame
+-- Khung cuộn để hiện danh sách người chơi
+local scrollingFrame = Instance.new("ScrollingFrame")
+scrollingFrame.Name = "PlayerList"
+scrollingFrame.Size = UDim2.new(1, -10, 0, 100)
+scrollingFrame.Position = UDim2.new(0, 5, 0, 75)
+scrollingFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+scrollingFrame.BorderSizePixel = 1
+scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollingFrame.ScrollBarImageColor3 = Color3.fromRGB(150, 90, 255)
+scrollingFrame.Visible = false -- Ban đầu ẩn đi
+scrollingFrame.Parent = mainFrame
 
-	local playerListFrame = Instance.new("ScrollingFrame")
-	playerListFrame.Name = "PlayerListFrame"
-	playerListFrame.Size = UDim2.new(1, -20, 0, 100)
-	playerListFrame.Position = UDim2.new(0, 10, 0, 80)
-	playerListFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-	playerListFrame.BorderSizePixel = 1
-	playerListFrame.Visible = false -- Ẩn ban đầu
-	playerListFrame.Parent = mainFrame
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 5)
+listLayout.SortOrder = Enum.SortOrder.Name
+listLayout.Parent = scrollingFrame
+
+-- Label hiển thị mục tiêu hiện tại
+local targetInfoLabel = Instance.new("TextLabel")
+targetInfoLabel.Name = "TargetInfo"
+targetInfoLabel.Size = UDim2.new(1, -10, 0, 20)
+targetInfoLabel.Position = UDim2.new(0, 5, 0, 180)
+targetInfoLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+targetInfoLabel.BackgroundTransparency = 1
+targetInfoLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+targetInfoLabel.Font = Enum.Font.SourceSansItalic
+targetInfoLabel.TextSize = 14
+targetInfoLabel.Text = "Mục tiêu: Chưa chọn"
+targetInfoLabel.Parent = mainFrame
+
+-- Nút Bật/Tắt
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Size = UDim2.new(0, 85, 0, 30)
+toggleButton.Position = UDim2.new(0, 5, 0, 210)
+toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Màu đỏ (OFF)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.TextSize = 16
+toggleButton.Text = "OFF"
+toggleButton.Parent = mainFrame
+
+-- Nút chế độ ORA ORA
+local oraButton = Instance.new("TextButton")
+oraButton.Name = "OraButton"
+oraButton.Size = UDim2.new(0, 85, 0, 30)
+oraButton.Position = UDim2.new(1, -90, 0, 210)
+oraButton.BackgroundColor3 = Color3.fromRGB(150, 90, 255)
+oraButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+oraButton.Font = Enum.Font.SourceSansBold
+oraButton.TextSize = 16
+oraButton.Text = "ORA ORA"
+oraButton.Parent = mainFrame
+
+-- Nút thu nhỏ
+local shrinkButton = Instance.new("TextButton")
+shrinkButton.Name = "ShrinkButton"
+shrinkButton.Size = UDim2.new(1, -10, 0, 30)
+shrinkButton.Position = UDim2.new(0, 5, 0, 250)
+shrinkButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+shrinkButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+shrinkButton.Font = Enum.Font.SourceSansBold
+shrinkButton.TextSize = 20
+shrinkButton.Text = "-"
+shrinkButton.Parent = mainFrame
+
+
+-- =================================================================
+-- LOGIC CỦA SCRIPT
+-- =================================================================
+
+-- Hàm cập nhật danh sách người chơi
+local function updatePlayerList()
+	scrollingFrame:ClearAllChildren() -- Xóa danh sách cũ
 	
-	local uiListLayout = Instance.new("UIListLayout")
-	uiListLayout.Padding = UDim.new(0, 5)
-	uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	uiListLayout.Parent = playerListFrame
-
-	local onOffButton = Instance.new("TextButton")
-	onOffButton.Name = "OnOffButton"
-	onOffButton.Size = UDim2.new(1, -20, 0, 40)
-	onOffButton.Position = UDim2.new(0, 10, 0, 190)
-	onOffButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-	onOffButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	onOffButton.Font = Enum.Font.SourceSansBold
-	onOffButton.Text = "FOLLOW: OFF"
-	onOffButton.TextSize = 18
-	onOffButton.Parent = mainFrame
-
-	-- Nút ORA ORA mới
-	local oraButton = Instance.new("TextButton")
-	oraButton.Name = "OraButton"
-	oraButton.Size = UDim2.new(1, -20, 0, 40)
-	oraButton.Position = UDim2.new(0, 10, 0, 240)
-	oraButton.BackgroundColor3 = Color3.fromRGB(80, 80, 200)
-	oraButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	oraButton.Font = Enum.Font.SourceSansBold
-	oraButton.Text = "ORA ORA: OFF"
-	oraButton.TextSize = 18
-	oraButton.Parent = mainFrame
-
-	-- Logic cập nhật danh sách người chơi
-	local function updatePlayerList()
-		playerListFrame.Visible = true
-		for _, child in ipairs(playerListFrame:GetChildren()) do
-			if child:IsA("TextButton") then
-				child:Destroy()
-			end
-		end
-
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= localPlayer then
-				local playerButton = Instance.new("TextButton")
-				playerButton.Name = player.Name
-				playerButton.Size = UDim2.new(1, 0, 0, 30)
-				playerButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-				playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-				playerButton.Font = Enum.Font.SourceSans
-				playerButton.Text = player.Name
-				playerButton.TextSize = 14
-				playerButton.Parent = playerListFrame
-
-				playerButton.MouseButton1Click:Connect(function()
-					nameTextBox.Text = player.Name
-					standUser = player
-					playerListFrame.Visible = false
-				end)
-			end
+	local searchText = nameInput.Text:lower()
+	local canvasHeight = 0
+	
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= localPlayer and player.Name:lower():match("^" .. searchText) then
+			local playerButton = Instance.new("TextButton")
+			playerButton.Name = player.Name
+			playerButton.Size = UDim2.new(1, -10, 0, 25)
+			playerButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+			playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+			playerButton.Font = Enum.Font.SourceSans
+			playerButton.TextSize = 14
+			playerButton.Text = player.Name
+			playerButton.Parent = scrollingFrame
+			
+			canvasHeight = canvasHeight + 30 -- 25 height + 5 padding
+			
+			-- Sự kiện khi click chọn một người chơi
+			playerButton.MouseButton1Click:Connect(function()
+				targetPlayer = player
+				targetInfoLabel.Text = "Mục tiêu: " .. player.Name
+				nameInput.Text = ""
+				scrollingFrame.Visible = false
+			end)
 		end
 	end
 	
-	-- Logic thu nhỏ / mở rộng GUI
-	minimizeButton.MouseButton1Click:Connect(function()
-		isGuiMinimized = not isGuiMinimized
-		
-		nameTextBox.Visible = not isGuiMinimized
-		onOffButton.Visible = not isGuiMinimized
-		oraButton.Visible = not isGuiMinimized -- Thêm nút ora vào logic
-		if playerListFrame.Visible then
-			playerListFrame.Visible = not isGuiMinimized
-		end
-		
-		if isGuiMinimized then
-			minimizeButton.Text = "+"
-			mainFrame:TweenSize(UDim2.new(0, 200, 0, 30), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
-		else
-			minimizeButton.Text = "-"
-			mainFrame:TweenSize(UDim2.new(0, 200, 0, 300), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
-		end
-	end)
-
-	-- Sự kiện cho các nút
-	nameTextBox.Focused:Connect(updatePlayerList)
-	nameTextBox.FocusLost:Connect(function()
-		wait(0.2)
-		playerListFrame.Visible = false
-	end)
-
-	onOffButton.MouseButton1Click:Connect(function()
-		if not standUser then
-			print("Vui lòng chọn một Stand User trước!")
-			return
-		end
-		
-		isFollowing = not isFollowing
-		if isFollowing then
-			onOffButton.Text = "FOLLOW: ON"
-			onOffButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-		else
-			onOffButton.Text = "FOLLOW: OFF"
-			onOffButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-			-- Tắt ORA khi tắt Follow
-			isOraActive = false
-			oraButton.Text = "ORA ORA: OFF"
-			oraButton.BackgroundColor3 = Color3.fromRGB(80, 80, 200)
-		end
-	end)
-
-	oraButton.MouseButton1Click:Connect(function()
-		if not isFollowing then
-			print("Cần bật FOLLOW trước khi dùng ORA ORA!")
-			return
-		end
-		
-		isOraActive = not isOraActive
-		if isOraActive then
-			oraButton.Text = "ORA ORA: ON"
-			oraButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0) -- Màu cam
-		else
-			oraButton.Text = "ORA ORA: OFF"
-			oraButton.BackgroundColor3 = Color3.fromRGB(80, 80, 200) -- Màu xanh
-		end
-	end)
-
-	return screenGui
+	scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, canvasHeight)
 end
 
--- =================================================================
--- PHẦN 2: LOGIC CHÍNH VÀ VÒNG LẶP CẬP NHẬT
--- =================================================================
-
--- Khởi tạo GUI
-local standGui = createStandControlGui()
-standGui.Parent = playerGui
-
--- Vòng lặp cập nhật vị trí của bạn (Stand) mỗi khung hình
-RunService.RenderStepped:Connect(function()
-	if not isFollowing or not standUser or not standUser.Character or not standUser.Character:FindFirstChild("HumanoidRootPart") then
-		return
-	end
-	
-	if not character or not character:FindFirstChild("HumanoidRootPart") then
-		return
-	end
-
-	local userRoot = standUser.Character.HumanoidRootPart
-	local userCFrame = userRoot.CFrame
-	local standTargetCFrame
-	
-	if isOraActive then
-		-- Chế độ ORA ORA: Đứng trước mặt Stand User
-		local offset = CFrame.new(0, 0, -5) -- Khoảng cách 5 stud ở phía trước
-		standTargetCFrame = userCFrame * offset
-	else
-		-- Chế độ Follow: Đứng phía sau Stand User
-		local offset = CFrame.new(2, 0, 4) -- Khoảng cách như trong ảnh
-		standTargetCFrame = userCFrame * offset
-	end
-	
-	-- Di chuyển nhân vật của bạn đến vị trí đó
-	character:SetPrimaryPartCFrame(standTargetCFrame)
+-- Sự kiện khi click vào ô nhập tên
+nameInput.Focused:Connect(function()
+	scrollingFrame.Visible = true
+	updatePlayerList()
 end)
 
--- Xử lý khi người chơi chết và hồi sinh
-localPlayer.CharacterAdded:Connect(function(newChar)
-	character = newChar
-	-- Tắt các chế độ khi chết để tránh lỗi
-	isFollowing = false
-	isOraActive = false
-	
-	local mainFrame = standGui:FindFirstChild("MainFrame")
-	if mainFrame then
-		local onOffButton = mainFrame:FindFirstChild("OnOffButton")
-		local oraButton = mainFrame:FindFirstChild("OraButton")
-		if onOffButton then
-			onOffButton.Text = "FOLLOW: OFF"
-			onOffButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-		end
-		if oraButton then
-			oraButton.Text = "ORA ORA: OFF"
-			oraButton.BackgroundColor3 = Color3.fromRGB(80, 80, 200)
-		end
+-- Sự kiện khi gõ chữ vào ô nhập tên
+nameInput.TextChanged:Connect(updatePlayerList)
+
+-- Sự kiện khi click ra ngoài ô nhập tên
+nameInput.FocusLost:Connect(function(enterPressed)
+	if not enterPressed then
+		-- Dùng task.wait để chờ một chút, nếu không sự kiện click vào button player sẽ không kịp chạy
+		task.wait(0.2) 
+		scrollingFrame.Visible = false
 	end
+end)
+
+
+-- Sự kiện click nút Bật/Tắt
+toggleButton.MouseButton1Click:Connect(function()
+	isEnabled = not isEnabled -- Đảo ngược trạng thái
+	if isEnabled then
+		toggleButton.Text = "ON"
+		toggleButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50) -- Màu xanh (ON)
+	else
+		toggleButton.Text = "OFF"
+		toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Màu đỏ (OFF)
+	end
+end)
+
+-- Sự kiện click nút ORA ORA
+oraButton.MouseButton1Click:Connect(function()
+	if currentMode == "behind" then
+		currentMode = "ora"
+		oraButton.Text = "BEHIND"
+	else
+		currentMode = "behind"
+		oraButton.Text = "ORA ORA"
+	end
+end)
+
+-- Hàm thu nhỏ/phóng to nhân vật
+local function setCharacterScale(scale)
+	local character = localPlayer.Character
+	if not character then return end
+	
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.BodyDepthScale.Value = scale
+		humanoid.BodyHeightScale.Value = scale
+		humanoid.BodyWidthScale.Value = scale
+		humanoid.HeadScale.Value = scale
+	end
+end
+
+-- Sự kiện click nút Thu nhỏ
+shrinkButton.MouseButton1Click:Connect(function()
+	isShrunk = not isShrunk
+	if isShrunk then
+		setCharacterScale(0.5) -- Thu nhỏ lại một nửa
+		shrinkButton.Text = "+"
+	else
+		setCharacterScale(1) -- Trở về kích thước bình thường
+		shrinkButton.Text = "-"
+	end
+end)
+
+
+-- Vòng lặp chính để di chuyển theo mục tiêu
+RunService.Heartbeat:Connect(function()
+	-- Chỉ chạy khi script được bật, có mục tiêu, và mục tiêu còn trong server
+	if not isEnabled or not targetPlayer or not targetPlayer.Parent then
+		-- Nếu mục tiêu thoát game, reset lại
+		if targetPlayer and not targetPlayer.Parent then
+			targetPlayer = nil
+			targetInfoLabel.Text = "Mục tiêu: Đã thoát"
+			isEnabled = false
+			toggleButton.Text = "OFF"
+			toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+		end
+		return
+	end
+	
+	local myCharacter = localPlayer.Character
+	local targetCharacter = targetPlayer.Character
+	
+	-- Kiểm tra xem cả 2 nhân vật có tồn tại và có HumanoidRootPart không
+	if not myCharacter or not targetCharacter then return end
+	
+	local myRoot = myCharacter:FindFirstChild("HumanoidRootPart")
+	local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
+	
+	if not myRoot or not targetRoot then return end
+	
+	-- Tính toán vị trí mới
+	local offset
+	if currentMode == "behind" then
+		-- Vị trí: Lùi ra sau 4 studs, lệch sang trái 2.5 studs (nhìn từ phía mục tiêu)
+		offset = CFrame.new(-2.5, 0, 4) 
+	else -- Chế độ 'ora'
+		-- Vị trí: Đứng ngay trước mặt, cách 4 studs
+		offset = CFrame.new(0, 0, -4)
+	end
+	
+	-- Lấy CFrame của mục tiêu và áp dụng offset để có CFrame mới
+	local newCFrame = targetRoot.CFrame * offset
+	
+	-- Di chuyển nhân vật của bạn đến vị trí mới
+	-- CFrame bao gồm cả vị trí (Position) và hướng nhìn (Rotation)
+	myRoot.CFrame = newCFrame
 end)
