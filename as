@@ -1,330 +1,281 @@
--- JoJo Stand System Script
--- Đặt script này vào StarterPlayerScripts
+-- Script này đặt trong StarterPlayer > StarterPlayerScripts
 
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-
--- Biến global
-local standUser = nil
-local standModel = nil
-local standActive = false
-local oraOraMode = false
-local updateConnection = nil
-local targetPlayer = nil
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
 -- Tạo GUI
-local function createGUI()
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "StandGUI"
-    screenGui.Parent = playerGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "StandGUI"
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Frame chính
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 200, 0, 150)
+mainFrame.Position = UDim2.new(0, 10, 0.5, -75)
+mainFrame.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
+mainFrame.BorderSizePixel = 2
+mainFrame.BorderColor3 = Color3.fromRGB(255, 215, 0)
+mainFrame.Parent = screenGui
+
+-- Title
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(0.85, 0, 0, 30)
+titleLabel.Position = UDim2.new(0, 0, 0, 0)
+titleLabel.Text = "STAND JOJO"
+titleLabel.TextScaled = true
+titleLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+titleLabel.BackgroundColor3 = Color3.fromRGB(75, 0, 130)
+titleLabel.Font = Enum.Font.Fantasy
+titleLabel.Parent = mainFrame
+
+-- Minimize button
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Size = UDim2.new(0.15, 0, 0, 30)
+minimizeButton.Position = UDim2.new(0.85, 0, 0, 0)
+minimizeButton.Text = "-"
+minimizeButton.TextScaled = true
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+minimizeButton.Font = Enum.Font.SourceSansBold
+minimizeButton.Parent = mainFrame
+
+-- Container cho content (để dễ ẩn/hiện)
+local contentFrame = Instance.new("Frame")
+contentFrame.Size = UDim2.new(1, 0, 1, -30)
+contentFrame.Position = UDim2.new(0, 0, 0, 30)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = mainFrame
+
+-- TextBox nhập tên
+local nameInput = Instance.new("TextBox")
+nameInput.Size = UDim2.new(0.9, 0, 0, 30)
+nameInput.Position = UDim2.new(0.05, 0, 0.1, 0)
+nameInput.PlaceholderText = "Nhập tên user..."
+nameInput.Text = ""
+nameInput.TextScaled = true
+nameInput.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+nameInput.TextColor3 = Color3.fromRGB(0, 0, 0)
+nameInput.Parent = contentFrame
+
+-- Toggle button (OFF/ON)
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0.4, 0, 0, 25)
+toggleButton.Position = UDim2.new(0.05, 0, 0.5, 0)
+toggleButton.Text = "OFF"
+toggleButton.TextScaled = true
+toggleButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Parent = contentFrame
+
+-- Ora Ora button
+local oraButton = Instance.new("TextButton")
+oraButton.Size = UDim2.new(0.4, 0, 0, 25)
+oraButton.Position = UDim2.new(0.55, 0, 0.5, 0)
+oraButton.Text = "ORA ORA"
+oraButton.TextScaled = true
+oraButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+oraButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+oraButton.Parent = contentFrame
+
+-- Variables
+local standEnabled = false
+local oraMode = false
+local targetPlayer = nil
+local standConnection = nil
+local isMinimized = false
+
+-- Tạo Stand (clone của character nhưng màu tím và không có accessories)
+local function createStand()
+    local stand = character:Clone()
+    stand.Name = "Stand_" .. player.Name
     
-    -- Main Frame
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 300, 0, 200)
-    mainFrame.Position = UDim2.new(0, 10, 0.5, -100)
-    mainFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
-    mainFrame.BorderSizePixel = 2
-    mainFrame.BorderColor3 = Color3.new(0.8, 0.8, 0.8)
-    mainFrame.Parent = screenGui
+    -- Xóa accessories và tools
+    for _, child in pairs(stand:GetChildren()) do
+        if child:IsA("Accessory") or child:IsA("Tool") then
+            child:Destroy()
+        end
+    end
     
-    -- Title
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(1, 0, 0, 30)
-    title.Position = UDim2.new(0, 0, 0, 0)
-    title.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
-    title.BorderSizePixel = 0
-    title.Text = "STAND JOJO"
-    title.TextColor3 = Color3.new(1, 1, 1)
-    title.TextScaled = true
-    title.Font = Enum.Font.SourceSansBold
-    title.Parent = mainFrame
+    -- Đổi màu da thành tím
+    for _, part in pairs(stand:GetDescendants()) do
+        if part:IsA("BasePart") and part.Parent:IsA("Model") then
+            if part.Name == "Head" or part.Name == "Torso" or part.Name == "Left Arm" or 
+               part.Name == "Right Arm" or part.Name == "Left Leg" or part.Name == "Right Leg" or
+               part.Name == "UpperTorso" or part.Name == "LowerTorso" or part.Name == "LeftUpperArm" or
+               part.Name == "RightUpperArm" or part.Name == "LeftLowerArm" or part.Name == "RightLowerArm" or
+               part.Name == "LeftUpperLeg" or part.Name == "RightUpperLeg" or part.Name == "LeftLowerLeg" or
+               part.Name == "RightLowerLeg" or part.Name == "LeftHand" or part.Name == "RightHand" or
+               part.Name == "LeftFoot" or part.Name == "RightFoot" then
+                part.Color = Color3.fromRGB(138, 43, 226) -- Màu tím
+            end
+        end
+        -- Làm trong suốt một chút
+        if part:IsA("BasePart") then
+            part.Transparency = 0.3
+        end
+    end
     
-    -- Input Label
-    local inputLabel = Instance.new("TextLabel")
-    inputLabel.Name = "InputLabel"
-    inputLabel.Size = UDim2.new(1, -20, 0, 20)
-    inputLabel.Position = UDim2.new(0, 10, 0, 40)
-    inputLabel.BackgroundTransparency = 1
-    inputLabel.Text = "Nhập tên:"
-    inputLabel.TextColor3 = Color3.new(1, 1, 1)
-    inputLabel.TextScaled = true
-    inputLabel.Font = Enum.Font.SourceSans
-    inputLabel.TextXAlignment = Enum.TextXAlignment.Left
-    inputLabel.Parent = mainFrame
+    -- Xóa humanoid cũ và tạo mới
+    local oldHumanoid = stand:FindFirstChild("Humanoid")
+    if oldHumanoid then
+        oldHumanoid:Destroy()
+    end
     
-    -- Input TextBox
-    local inputBox = Instance.new("TextBox")
-    inputBox.Name = "InputBox"
-    inputBox.Size = UDim2.new(1, -20, 0, 30)
-    inputBox.Position = UDim2.new(0, 10, 0, 65)
-    inputBox.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
-    inputBox.BorderSizePixel = 1
-    inputBox.BorderColor3 = Color3.new(0.6, 0.6, 0.6)
-    inputBox.Text = ""
-    inputBox.PlaceholderText = "Ví dụ: namhung1 hoặc nam"
-    inputBox.TextColor3 = Color3.new(1, 1, 1)
-    inputBox.TextScaled = true
-    inputBox.Font = Enum.Font.SourceSans
-    inputBox.Parent = mainFrame
-    
-    -- Stand Toggle Button
-    local standToggle = Instance.new("TextButton")
-    standToggle.Name = "StandToggle"
-    standToggle.Size = UDim2.new(1, -20, 0, 30)
-    standToggle.Position = UDim2.new(0, 10, 0, 105)
-    standToggle.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
-    standToggle.BorderSizePixel = 1
-    standToggle.BorderColor3 = Color3.new(0.6, 0.6, 0.6)
-    standToggle.Text = "OFF"
-    standToggle.TextColor3 = Color3.new(1, 1, 1)
-    standToggle.TextScaled = true
-    standToggle.Font = Enum.Font.SourceSansBold
-    standToggle.Parent = mainFrame
-    
-    -- Ora Ora Button
-    local oraButton = Instance.new("TextButton")
-    oraButton.Name = "OraButton"
-    oraButton.Size = UDim2.new(1, -20, 0, 30)
-    oraButton.Position = UDim2.new(0, 10, 0, 145)
-    oraButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.8)
-    oraButton.BorderSizePixel = 1
-    oraButton.BorderColor3 = Color3.new(0.6, 0.6, 0.6)
-    oraButton.Text = "ORA ORA"
-    oraButton.TextColor3 = Color3.new(1, 1, 1)
-    oraButton.TextScaled = true
-    oraButton.Font = Enum.Font.SourceSansBold
-    oraButton.Parent = mainFrame
-    
-    return screenGui, inputBox, standToggle, oraButton
+    stand.Parent = workspace
+    return stand
 end
 
--- Tìm người chơi theo tên (hỗ trợ tìm kiếm từng phần)
-local function findPlayerByName(name)
-    if not name or name == "" then return nil end
-    
-    name = name:lower()
-    for _, p in pairs(Players:GetPlayers()) do
-        if p.Name:lower():find(name) then
-            return p
+-- Function tìm player
+local function findPlayer(partialName)
+    partialName = partialName:lower()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr.Name:lower():find(partialName) then
+            return plr
         end
     end
     return nil
 end
 
--- Tạo Stand model
-local function createStandModel()
-    local stand = Instance.new("Model")
-    stand.Name = "Stand"
-    stand.Parent = workspace
+-- Function update vị trí Stand
+local function updateStandPosition(stand, target)
+    if not stand or not target or not target.Character then return end
     
-    -- Tạo các parts cho Stand
-    local humanoidRootPart = Instance.new("Part")
-    humanoidRootPart.Name = "HumanoidRootPart"
-    humanoidRootPart.Size = Vector3.new(2, 2, 1)
-    humanoidRootPart.Material = Enum.Material.Neon
-    humanoidRootPart.BrickColor = BrickColor.new("Bright violet")
-    humanoidRootPart.CanCollide = false
-    humanoidRootPart.Anchored = true
-    humanoidRootPart.Parent = stand
-    
-    local head = Instance.new("Part")
-    head.Name = "Head"
-    head.Size = Vector3.new(2, 1, 1)
-    head.Material = Enum.Material.Neon
-    head.BrickColor = BrickColor.new("Bright violet")
-    head.CanCollide = false
-    head.Anchored = true
-    head.Parent = stand
-    
-    local torso = Instance.new("Part")
-    torso.Name = "Torso"
-    torso.Size = Vector3.new(2, 2, 1)
-    torso.Material = Enum.Material.Neon
-    torso.BrickColor = BrickColor.new("Bright violet")
-    torso.CanCollide = false
-    torso.Anchored = true
-    torso.Parent = stand
-    
-    -- Tạo tóc dài (nhiều parts)
-    for i = 1, 5 do
-        local hairPart = Instance.new("Part")
-        hairPart.Name = "Hair" .. i
-        hairPart.Size = Vector3.new(0.5, 0.5, 0.5)
-        hairPart.Material = Enum.Material.Neon
-        hairPart.BrickColor = BrickColor.new("Really black")
-        hairPart.CanCollide = false
-        hairPart.Anchored = true
-        hairPart.Parent = stand
-    end
-    
-    -- Tạo Humanoid
-    local humanoid = Instance.new("Humanoid")
-    humanoid.MaxHealth = 100
-    humanoid.Health = 100
-    humanoid.Parent = stand
-    
-    return stand
-end
-
--- Cập nhật vị trí Stand
-local function updateStandPosition()
-    if not standModel or not targetPlayer or not targetPlayer.Character then
-        return
-    end
-    
-    local targetChar = targetPlayer.Character
-    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-    
+    local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
     if not targetRoot then return end
     
-    local standRoot = standModel:FindFirstChild("HumanoidRootPart")
-    local standHead = standModel:FindFirstChild("Head")
-    local standTorso = standModel:FindFirstChild("Torso")
+    local standRoot = stand:FindFirstChild("HumanoidRootPart")
+    if not standRoot then return end
     
-    if not standRoot or not standHead or not standTorso then return end
-    
-    local targetPosition = targetRoot.Position
-    local targetLookVector = targetRoot.CFrame.LookVector
-    
-    local standPosition
-    if oraOraMode then
-        -- Đứng trước target như ảnh 2
-        standPosition = targetPosition + targetLookVector * 5
+    if oraMode then
+        -- Đứng trước mặt
+        local frontOffset = targetRoot.CFrame.LookVector * 3
+        standRoot.CFrame = targetRoot.CFrame + frontOffset
     else
-        -- Đứng sau target như ảnh 1  
-        standPosition = targetPosition - targetLookVector * 5
+        -- Đứng sau lưng
+        local backOffset = -targetRoot.CFrame.LookVector * 3
+        standRoot.CFrame = targetRoot.CFrame + backOffset
     end
-    
-    -- Đặt vị trí cho các parts
-    standRoot.Position = standPosition
-    standHead.Position = standPosition + Vector3.new(0, 1.5, 0)
-    standTorso.Position = standPosition
-    
-    -- Cập nhật vị trí tóc
-    for i = 1, 5 do
-        local hairPart = standModel:FindFirstChild("Hair" .. i)
-        if hairPart then
-            hairPart.Position = standPosition + Vector3.new(
-                math.sin(i * 0.5) * 0.5,
-                2 + i * 0.3,
-                math.cos(i * 0.5) * 0.5
-            )
-        end
-    end
-    
-    -- Quay Stand nhìn về phía target
-    local lookDirection = (targetPosition - standPosition).Unit
-    standRoot.CFrame = CFrame.lookAt(standPosition, targetPosition)
-    standHead.CFrame = CFrame.lookAt(standHead.Position, targetPosition + Vector3.new(0, 1.5, 0))
-    standTorso.CFrame = CFrame.lookAt(standTorso.Position, targetPosition)
 end
 
--- Kích hoạt/tắt Stand
-local function toggleStand(inputText, toggleButton)
-    if standActive then
-        -- Tắt Stand
-        standActive = false
-        oraOraMode = false
-        
-        if standModel then
-            standModel:Destroy()
-            standModel = nil
+-- Minimize/Maximize
+minimizeButton.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    
+    if isMinimized then
+        -- Thu nhỏ
+        mainFrame:TweenSize(
+            UDim2.new(0, 200, 0, 30),
+            Enum.EasingDirection.Out,
+            Enum.EasingStyle.Quad,
+            0.2,
+            true
+        )
+        contentFrame.Visible = false
+        minimizeButton.Text = "+"
+        minimizeButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    else
+        -- Phóng to
+        mainFrame:TweenSize(
+            UDim2.new(0, 200, 0, 150),
+            Enum.EasingDirection.Out,
+            Enum.EasingStyle.Quad,
+            0.2,
+            true
+        )
+        contentFrame.Visible = true
+        minimizeButton.Text = "-"
+        minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    end
+end)
+
+-- Toggle Stand
+toggleButton.MouseButton1Click:Connect(function()
+    standEnabled = not standEnabled
+    
+    if standEnabled then
+        local inputName = nameInput.Text
+        if inputName == "" then
+            toggleButton.Text = "OFF"
+            toggleButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+            standEnabled = false
+            return
         end
         
-        if updateConnection then
-            updateConnection:Disconnect()
-            updateConnection = nil
+        targetPlayer = findPlayer(inputName)
+        if not targetPlayer then
+            toggleButton.Text = "OFF"
+            toggleButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+            standEnabled = false
+            return
         end
         
+        toggleButton.Text = "ON"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        
+        -- Tạo Stand
+        local stand = createStand()
+        
+        -- Update vị trí liên tục
+        standConnection = RunService.Heartbeat:Connect(function()
+            if standEnabled and stand and stand.Parent then
+                updateStandPosition(stand, targetPlayer)
+            else
+                if standConnection then
+                    standConnection:Disconnect()
+                end
+                if stand and stand.Parent then
+                    stand:Destroy()
+                end
+            end
+        end)
+        
+    else
         toggleButton.Text = "OFF"
-        toggleButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
-        targetPlayer = nil
+        toggleButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
         
-    else
-        -- Bật Stand
-        local foundPlayer = findPlayerByName(inputText)
-        if foundPlayer and foundPlayer.Character then
-            standActive = true
-            targetPlayer = foundPlayer
-            
-            -- Tạo Stand model
-            standModel = createStandModel()
-            
-            -- Bắt đầu update vị trí
-            updateConnection = RunService.Heartbeat:Connect(updateStandPosition)
-            
-            toggleButton.Text = "ON"
-            toggleButton.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2)
-            
-            print("Stand activated for: " .. foundPlayer.Name)
+        -- Xóa Stand
+        if standConnection then
+            standConnection:Disconnect()
+        end
+        
+        for _, obj in pairs(workspace:GetChildren()) do
+            if obj.Name == "Stand_" .. player.Name then
+                obj:Destroy()
+            end
+        end
+    end
+end)
+
+-- Ora Ora mode
+oraButton.MouseButton1Click:Connect(function()
+    if standEnabled then
+        oraMode = not oraMode
+        if oraMode then
+            oraButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+            oraButton.Text = "MUDA MUDA"
         else
-            print("Không tìm thấy người chơi: " .. inputText)
+            oraButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+            oraButton.Text = "ORA ORA"
         end
     end
-end
+end)
 
--- Kích hoạt Ora Ora mode
-local function toggleOraOra(oraButton)
-    if not standActive or not targetPlayer then
-        print("Cần bật Stand trước!")
-        return
-    end
+-- Reset khi character chết
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    humanoidRootPart = character:WaitForChild("HumanoidRootPart")
     
-    oraOraMode = not oraOraMode
-    
-    if oraOraMode then
-        oraButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.8)
-        print("ORA ORA MODE ON!")
-    else
-        oraButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.8)
-        print("ORA ORA MODE OFF!")
-    end
-end
-
--- Khởi tạo GUI và các sự kiện
-local function initializeStandSystem()
-    local gui, inputBox, standToggle, oraButton = createGUI()
-    
-    -- Sự kiện cho Stand Toggle
-    standToggle.MouseButton1Click:Connect(function()
-        toggleStand(inputBox.Text, standToggle)
-    end)
-    
-    -- Sự kiện cho Ora Ora Button
-    oraButton.MouseButton1Click:Connect(function()
-        toggleOraOra(oraButton)
-    end)
-    
-    -- Sự kiện Enter trong TextBox
-    inputBox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            toggleStand(inputBox.Text, standToggle)
+    -- Reset Stand
+    if standEnabled then
+        toggleButton.Text = "OFF"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        standEnabled = false
+        
+        if standConnection then
+            standConnection:Disconnect()
         end
-    end)
-    
-    print("JoJo Stand System initialized!")
-end
-
--- Chạy system khi script load
-initializeStandSystem()
-
--- Cleanup khi player leave
-Players.PlayerRemoving:Connect(function(leavingPlayer)
-    if leavingPlayer == targetPlayer then
-        if standModel then
-            standModel:Destroy()
-        end
-        if updateConnection then
-            updateConnection:Disconnect()
-        end
-        standActive = false
-        targetPlayer = nil
     end
 end)
