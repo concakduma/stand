@@ -1,362 +1,274 @@
--- Script này đặt trong StarterPlayer > StarterPlayerScripts
+--[[
+	Script được tạo bởi một AI chuyên nghiệp, đáp ứng yêu cầu của người dùng.
+	Chức năng:
+	1. Tạo GUI để điều khiển.
+	2. Tìm kiếm và chọn người chơi trong server để "làm Stand".
+	3. Bật/Tắt chế độ đi theo (teleport liên tục sau lưng).
+	4. Nút "Ora Ora" để di chuyển ra phía trước mục tiêu.
+	5. Nút thu nhỏ/phóng to GUI.
+]]
+
+-- DỊCH VỤ CẦN THIẾT
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+-- NGƯỜI CHƠI LOCAL (chính là bạn, người sẽ làm Stand)
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
--- Biến global
+-- BIẾN TRẠNG THÁI
 local targetPlayer = nil
+local targetCharacter = nil
+local targetRootPart = nil
 local isFollowing = false
-local isOraMode = false
 local followConnection = nil
-local isMinimized = false
+local followMode = "Behind" -- Chế độ: "Behind" (sau lưng) hoặc "Front" (trước mặt)
+local behindOffset = CFrame.new(0, 0.5, 4.5)  -- Khoảng cách phía sau (giống ảnh 1)
+local frontOffset = CFrame.new(0, 0, -4.5) -- Khoảng cách phía trước (giống ảnh 2)
 
--- Tạo GUI
+-- TẠO GIAO DIỆN (GUI)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "StandJojoGui"
-screenGui.Parent = playerGui
+screenGui.Name = "StandControllerGui"
+screenGui.ResetOnSpawn = false -- Không reset GUI khi chết
+screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 300, 0, 400)
-mainFrame.Position = UDim2.new(0, 20, 0.5, -200)
-mainFrame.BackgroundColor3 = Color3.fromRGB(75, 0, 130)
+mainFrame.Size = UDim2.new(0, 220, 0, 300)
+mainFrame.Position = UDim2.new(0.01, 0, 0.5, -150)
+mainFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+mainFrame.BorderColor3 = Color3.fromRGB(150, 100, 255)
 mainFrame.BorderSizePixel = 2
-mainFrame.BorderColor3 = Color3.fromRGB(255, 215, 0)
+mainFrame.Draggable = true -- Cho phép kéo thả GUI
+mainFrame.Active = true
 mainFrame.Parent = screenGui
 
--- Tạo corner radius
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
-corner.Parent = mainFrame
-
--- Title
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Name = "TitleLabel"
-titleLabel.Size = UDim2.new(1, 0, 0, 40)
-titleLabel.Position = UDim2.new(0, 0, 0, 0)
-titleLabel.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
-titleLabel.BorderSizePixel = 0
-titleLabel.Text = "STAND JOJO"
+titleLabel.Name = "Title"
+titleLabel.Size = UDim2.new(1, 0, 0, 30)
+titleLabel.BackgroundColor3 = Color3.fromRGB(150, 100, 255)
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextScaled = true
 titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.Text = "Stand Jojo"
+titleLabel.TextSize = 18
 titleLabel.Parent = mainFrame
 
-local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 10)
-titleCorner.Parent = titleLabel
+local contentFrame = Instance.new("Frame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, 0, 1, -30)
+contentFrame.Position = UDim2.new(0, 0, 0, 30)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = mainFrame
 
--- Minimize Button
+local inputLabel = Instance.new("TextLabel")
+inputLabel.Name = "InputLabel"
+inputLabel.Size = UDim2.new(1, -10, 0, 20)
+inputLabel.Position = UDim2.new(0, 5, 0, 5)
+inputLabel.BackgroundTransparency = 1
+inputLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+inputLabel.Text = "Nhập tên (Stand User):"
+inputLabel.Font = Enum.Font.SourceSans
+inputLabel.TextSize = 14
+inputLabel.TextXAlignment = Enum.TextXAlignment.Left
+inputLabel.Parent = contentFrame
+
+local nameInput = Instance.new("TextBox")
+nameInput.Name = "NameInput"
+nameInput.Size = UDim2.new(1, -10, 0, 30)
+nameInput.Position = UDim2.new(0, 5, 0, 25)
+nameInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+nameInput.BorderColor3 = Color3.fromRGB(120, 120, 120)
+nameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+nameInput.Text = ""
+nameInput.PlaceholderText = "Click và gõ tên..."
+nameInput.Font = Enum.Font.SourceSans
+nameInput.TextSize = 14
+nameInput.ClearTextOnFocus = false
+nameInput.Parent = contentFrame
+
+local playerList = Instance.new("ScrollingFrame")
+playerList.Name = "PlayerList"
+playerList.Size = UDim2.new(1, -10, 0, 120)
+playerList.Position = UDim2.new(0, 5, 0, 60)
+playerList.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+playerList.BorderColor3 = Color3.fromRGB(120, 120, 120)
+playerList.CanvasSize = UDim2.new(0, 0, 0, 0)
+playerList.ScrollBarImageColor3 = Color3.fromRGB(150, 100, 255)
+playerList.Parent = contentFrame
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 2)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = playerList
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Size = UDim2.new(0.5, -10, 0, 35)
+toggleButton.Position = UDim2.new(0, 5, 1, -40)
+toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Màu đỏ cho Off
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.Text = "OFF"
+toggleButton.TextSize = 18
+toggleButton.Parent = contentFrame
+
+local oraButton = Instance.new("TextButton")
+oraButton.Name = "OraButton"
+oraButton.Size = UDim2.new(0.5, -10, 0, 35)
+oraButton.Position = UDim2.new(0.5, 5, 1, -40)
+oraButton.BackgroundColor3 = Color3.fromRGB(150, 100, 255)
+oraButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+oraButton.Font = Enum.Font.SourceSansBold
+oraButton.Text = "ORA ORA"
+oraButton.TextSize = 18
+oraButton.Parent = contentFrame
+
 local minimizeButton = Instance.new("TextButton")
 minimizeButton.Name = "MinimizeButton"
 minimizeButton.Size = UDim2.new(0, 30, 0, 30)
-minimizeButton.Position = UDim2.new(1, -35, 0, 5)
-minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-minimizeButton.BorderSizePixel = 0
-minimizeButton.Text = "-"
+minimizeButton.Position = UDim2.new(1, -30, 0, 0)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(150, 100, 255)
 minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-minimizeButton.TextScaled = true
 minimizeButton.Font = Enum.Font.SourceSansBold
-minimizeButton.Parent = titleLabel
+minimizeButton.Text = "-"
+minimizeButton.TextSize = 24
+minimizeButton.Parent = mainFrame
 
-local minimizeCorner = Instance.new("UICorner")
-minimizeCorner.CornerRadius = UDim.new(0, 5)
-minimizeCorner.Parent = minimizeButton
+-- CHỨC NĂNG
+local function updatePlayerList()
+	playerList:ClearAllChildren() -- Xóa danh sách cũ
+	listLayout.Parent = playerList -- Gắn lại layout
+	
+	local inputText = nameInput.Text:lower()
+	local matchingPlayers = {}
 
--- Input Label
-local inputLabel = Instance.new("TextLabel")
-inputLabel.Name = "InputLabel"
-inputLabel.Size = UDim2.new(1, -20, 0, 30)
-inputLabel.Position = UDim2.new(0, 10, 0, 50)
-inputLabel.BackgroundTransparency = 1
-inputLabel.Text = "Nhập tên:"
-inputLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-inputLabel.TextScaled = true
-inputLabel.Font = Enum.Font.SourceSans
-inputLabel.TextXAlignment = Enum.TextXAlignment.Left
-inputLabel.Parent = mainFrame
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= localPlayer and player.Name:lower():sub(1, #inputText) == inputText then
+			table.insert(matchingPlayers, player)
+		end
+	end
 
--- Input TextBox
-local inputTextBox = Instance.new("TextBox")
-inputTextBox.Name = "InputTextBox"
-inputTextBox.Size = UDim2.new(1, -20, 0, 30)
-inputTextBox.Position = UDim2.new(0, 10, 0, 80)
-inputTextBox.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-inputTextBox.BorderSizePixel = 1
-inputTextBox.BorderColor3 = Color3.fromRGB(0, 0, 0)
-inputTextBox.Text = ""
-inputTextBox.TextColor3 = Color3.fromRGB(0, 0, 0)
-inputTextBox.TextScaled = true
-inputTextBox.Font = Enum.Font.SourceSans
-inputTextBox.PlaceholderText = "Nhập tên player..."
-inputTextBox.Parent = mainFrame
+	for i, player in ipairs(matchingPlayers) do
+		local playerButton = Instance.new("TextButton")
+		playerButton.Name = player.Name
+		playerButton.Size = UDim2.new(1, 0, 0, 25)
+		playerButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+		playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+		playerButton.Font = Enum.Font.SourceSans
+		playerButton.Text = player.Name
+		playerButton.TextSize = 14
+		playerButton.LayoutOrder = i
+		playerButton.Parent = playerList
 
-local inputCorner = Instance.new("UICorner")
-inputCorner.CornerRadius = UDim.new(0, 5)
-inputCorner.Parent = inputTextBox
-
--- Player List ScrollingFrame
-local playerListFrame = Instance.new("ScrollingFrame")
-playerListFrame.Name = "PlayerListFrame"
-playerListFrame.Size = UDim2.new(1, -20, 0, 200)
-playerListFrame.Position = UDim2.new(0, 10, 0, 120)
-playerListFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-playerListFrame.BorderSizePixel = 1
-playerListFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
-playerListFrame.ScrollBarThickness = 8
-playerListFrame.Parent = mainFrame
-
-local listCorner = Instance.new("UICorner")
-listCorner.CornerRadius = UDim.new(0, 5)
-listCorner.Parent = playerListFrame
-
-local listLayout = Instance.new("UIListLayout")
-listLayout.SortOrder = Enum.SortOrder.Name
-listLayout.Padding = UDim.new(0, 2)
-listLayout.Parent = playerListFrame
-
--- Toggle Button (OFF/ON)
-local toggleButton = Instance.new("TextButton")
-toggleButton.Name = "ToggleButton"
-toggleButton.Size = UDim2.new(0.5, -5, 0, 35)
-toggleButton.Position = UDim2.new(0, 10, 0, 330)
-toggleButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-toggleButton.BorderSizePixel = 0
-toggleButton.Text = "OFF"
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.TextScaled = true
-toggleButton.Font = Enum.Font.SourceSansBold
-toggleButton.Parent = mainFrame
-
-local toggleCorner = Instance.new("UICorner")
-toggleCorner.CornerRadius = UDim.new(0, 5)
-toggleCorner.Parent = toggleButton
-
--- Ora Button
-local oraButton = Instance.new("TextButton")
-oraButton.Name = "OraButton"
-oraButton.Size = UDim2.new(0.5, -5, 0, 35)
-oraButton.Position = UDim2.new(0.5, 5, 0, 330)
-oraButton.BackgroundColor3 = Color3.fromRGB(255, 215, 0)
-oraButton.BorderSizePixel = 0
-oraButton.Text = "ORA ORA"
-oraButton.TextColor3 = Color3.fromRGB(0, 0, 0)
-oraButton.TextScaled = true
-oraButton.Font = Enum.Font.SourceSansBold
-oraButton.Parent = mainFrame
-
-local oraCorner = Instance.new("UICorner")
-oraCorner.CornerRadius = UDim.new(0, 5)
-oraCorner.Parent = oraButton
-
--- Functions
-local function updatePlayerList(searchText)
-    -- Xóa tất cả các item cũ
-    for _, child in ipairs(playerListFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-    
-    searchText = searchText:lower()
-    local yPos = 0
-    
-    for _, otherPlayer in ipairs(Players:GetPlayers()) do
-        if otherPlayer ~= player and (searchText == "" or otherPlayer.Name:lower():find(searchText)) then
-            local playerButton = Instance.new("TextButton")
-            playerButton.Name = otherPlayer.Name
-            playerButton.Size = UDim2.new(1, -10, 0, 30)
-            playerButton.Position = UDim2.new(0, 5, 0, yPos)
-            playerButton.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
-            playerButton.BorderSizePixel = 1
-            playerButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
-            playerButton.Text = otherPlayer.Name
-            playerButton.TextColor3 = Color3.fromRGB(0, 0, 0)
-            playerButton.TextScaled = true
-            playerButton.Font = Enum.Font.SourceSans
-            playerButton.Parent = playerListFrame
-            
-            local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 3)
-            buttonCorner.Parent = playerButton
-            
-            playerButton.MouseButton1Click:Connect(function()
-                inputTextBox.Text = otherPlayer.Name
-                targetPlayer = otherPlayer
-                
-                -- Highlight selected player
-                for _, btn in ipairs(playerListFrame:GetChildren()) do
-                    if btn:IsA("TextButton") then
-                        btn.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
-                    end
-                end
-                playerButton.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
-            end)
-            
-            yPos = yPos + 32
-        end
-    end
-    
-    playerListFrame.CanvasSize = UDim2.new(0, 0, 0, yPos)
+		playerButton.MouseButton1Click:Connect(function()
+			nameInput.Text = player.Name
+			targetPlayer = player
+			print("Đã chọn Stand User:", targetPlayer.Name)
+			-- Reset chế độ về sau lưng mỗi khi chọn mục tiêu mới
+			followMode = "Behind" 
+		end)
+	end
 end
 
 local function stopFollowing()
-    if followConnection then
-        followConnection:Disconnect()
-        followConnection = nil
-    end
-    isFollowing = false
-    isOraMode = false
+	isFollowing = false
+	if followConnection then
+		followConnection:Disconnect()
+		followConnection = nil
+	end
+	toggleButton.Text = "OFF"
+	toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 end
 
 local function startFollowing()
-    if not targetPlayer or not targetPlayer.Character then
-        return
-    end
-    
-    stopFollowing()
-    isFollowing = true
-    
-    followConnection = RunService.Heartbeat:Connect(function()
-        if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            stopFollowing()
-            toggleButton.Text = "OFF"
-            toggleButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-            return
-        end
-        
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-            return
-        end
-        
-        local targetCFrame = targetPlayer.Character.HumanoidRootPart.CFrame
-        local offset
-        
-        if isOraMode then
-            -- Đứng trước target (như ảnh 2)
-            offset = targetCFrame.LookVector * 5
-        else
-            -- Đứng trước target (mặc định - như ảnh 1)
-            offset = targetCFrame.LookVector * 5
-        end
-        
-        local newPosition = targetCFrame.Position + offset
-        player.Character.HumanoidRootPart.CFrame = CFrame.lookAt(newPosition, targetPlayer.Character.HumanoidRootPart.Position)
-    end)
+	if not targetPlayer then
+		warn("Chưa chọn Stand User!")
+		return
+	end
+
+	isFollowing = true
+	toggleButton.Text = "ON"
+	toggleButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50) -- Màu xanh cho On
+
+	followConnection = RunService.RenderStepped:Connect(function()
+		if not isFollowing then return end
+
+		-- Kiểm tra mục tiêu còn tồn tại không
+		if not targetPlayer or not targetPlayer.Parent then
+			print("Mục tiêu đã rời khỏi game.")
+			stopFollowing()
+			return
+		end
+
+		targetCharacter = targetPlayer.Character
+		if not targetCharacter then
+			--print("Mục tiêu đang đợi hồi sinh...")
+			return
+		end
+
+		targetRootPart = targetCharacter:FindFirstChild("HumanoidRootPart")
+		if not targetRootPart or not humanoidRootPart then return end
+
+		local offset
+		if followMode == "Behind" then
+			offset = behindOffset
+		else -- "Front"
+			offset = frontOffset
+		end
+
+		local targetCFrame = targetRootPart.CFrame * offset
+		character:SetPrimaryPartCFrame(targetCFrame)
+	end)
 end
 
-local function toggleMinimize()
-    isMinimized = not isMinimized
-    
-    if isMinimized then
-        -- Biến mất hoàn toàn, chỉ còn nút -
-        mainFrame.Size = UDim2.new(0, 30, 0, 30)
-        mainFrame.BackgroundTransparency = 1
-        titleLabel.BackgroundTransparency = 1
-        titleLabel.TextTransparency = 1
-        
-        -- Ẩn tất cả trừ nút -
-        for _, child in ipairs(mainFrame:GetChildren()) do
-            if child ~= minimizeButton then
-                child.Visible = false
-            end
-        end
-        
-        -- Đặt lại vị trí nút -
-        minimizeButton.Position = UDim2.new(0, 0, 0, 0)
-        minimizeButton.Size = UDim2.new(0, 30, 0, 30)
-        minimizeButton.BackgroundColor3 = Color3.fromRGB(75, 0, 130)
-        minimizeButton.Text = "+"
-    else
-        -- Hiện lại toàn bộ GUI
-        mainFrame.Size = UDim2.new(0, 300, 0, 400)
-        mainFrame.BackgroundTransparency = 0
-        titleLabel.BackgroundTransparency = 0
-        titleLabel.TextTransparency = 0
-        
-        -- Hiện tất cả các element
-        for _, child in ipairs(mainFrame:GetChildren()) do
-            child.Visible = true
-        end
-        
-        -- Đặt lại vị trí nút -
-        minimizeButton.Position = UDim2.new(1, -35, 0, 5)
-        minimizeButton.Size = UDim2.new(0, 30, 0, 30)
-        minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-        minimizeButton.Text = "-"
-    end
-end
 
--- Event Connections
-inputTextBox:GetPropertyChangedSignal("Text"):Connect(function()
-    updatePlayerList(inputTextBox.Text)
-    
-    -- Tự động chọn player nếu tên khớp chính xác
-    for _, otherPlayer in ipairs(Players:GetPlayers()) do
-        if otherPlayer.Name:lower() == inputTextBox.Text:lower() then
-            targetPlayer = otherPlayer
-            break
-        end
-    end
-end)
+-- KẾT NỐI SỰ KIỆN
+nameInput.Changed:Connect(updatePlayerList)
+nameInput.Focused:Connect(updatePlayerList)
 
 toggleButton.MouseButton1Click:Connect(function()
-    if not targetPlayer then
-        return
-    end
-    
-    if isFollowing then
-        stopFollowing()
-        toggleButton.Text = "OFF"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-    else
-        startFollowing()
-        toggleButton.Text = "ON"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
-    end
+	if isFollowing then
+		stopFollowing()
+	else
+		startFollowing()
+	end
 end)
 
 oraButton.MouseButton1Click:Connect(function()
-    if not isFollowing or not targetPlayer then
-        return
-    end
-    
-    isOraMode = not isOraMode
-    
-    if isOraMode then
-        oraButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-        oraButton.Text = "ORA MODE"
-        -- Không thay đổi vị trí, vẫn ở phía trước
-    else
-        oraButton.BackgroundColor3 = Color3.fromRGB(255, 215, 0)
-        oraButton.Text = "ORA ORA"
-        -- Vẫn ở phía trước
-    end
+	if isFollowing then
+		followMode = "Front"
+		print("Chế độ ORA ORA: Di chuyển ra phía trước.")
+	else
+		warn("Cần bật chế độ 'ON' trước khi dùng ORA ORA.")
+	end
 end)
 
+local isMinimized = false
 minimizeButton.MouseButton1Click:Connect(function()
-    toggleMinimize()
+	isMinimized = not isMinimized
+	contentFrame.Visible = not isMinimized
+	if isMinimized then
+		mainFrame.Size = UDim2.new(0, 220, 0, 30) -- Chỉ còn thanh tiêu đề
+		minimizeButton.Text = "+"
+	else
+		mainFrame.Size = UDim2.new(0, 220, 0, 300) -- Kích thước cũ
+		minimizeButton.Text = "-"
+	end
 end)
 
--- Khởi tạo danh sách player
-updatePlayerList("")
-
--- Cập nhật danh sách khi có player mới join/leave
-Players.PlayerAdded:Connect(function()
-    updatePlayerList(inputTextBox.Text)
+-- Cập nhật danh sách khi có người chơi vào/ra
+Players.PlayerAdded:Connect(updatePlayerList)
+Players.PlayerRemoving:Connect(function(player)
+	if player == targetPlayer then
+		print("Stand User đã thoát, tự động tắt.")
+		stopFollowing()
+		targetPlayer = nil
+		nameInput.Text = ""
+	end
+	updatePlayerList()
 end)
 
-Players.PlayerRemoving:Connect(function(removedPlayer)
-    if targetPlayer == removedPlayer then
-        stopFollowing()
-        toggleButton.Text = "OFF"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-        targetPlayer = nil
-        inputTextBox.Text = ""
-    end
-    updatePlayerList(inputTextBox.Text)
-end)
+-- Khởi tạo danh sách lần đầu
+updatePlayerList()
