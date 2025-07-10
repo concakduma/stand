@@ -240,8 +240,8 @@ local function startFollowing()
             -- Đứng trước target (như ảnh 2)
             offset = targetCFrame.LookVector * 5
         else
-            -- Đứng sau target (như ảnh 1)
-            offset = targetCFrame.LookVector * -5
+            -- Đứng trước target (mặc định - như ảnh 1)
+            offset = targetCFrame.LookVector * 5
         end
         
         local newPosition = targetCFrame.Position + offset
@@ -330,9 +330,11 @@ oraButton.MouseButton1Click:Connect(function()
     if isOraMode then
         oraButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
         oraButton.Text = "ORA MODE"
+        -- Không thay đổi vị trí, vẫn ở phía trước
     else
         oraButton.BackgroundColor3 = Color3.fromRGB(255, 215, 0)
         oraButton.Text = "ORA ORA"
+        -- Vẫn ở phía trước
     end
 end)
 
