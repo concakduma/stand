@@ -253,27 +253,41 @@ local function toggleMinimize()
     isMinimized = not isMinimized
     
     if isMinimized then
-        -- Thu nhỏ
-        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local tween = TweenService:Create(mainFrame, tweenInfo, {Size = UDim2.new(0, 300, 0, 40)})
-        tween:Play()
+        -- Biến mất hoàn toàn, chỉ còn nút -
+        mainFrame.Size = UDim2.new(0, 30, 0, 30)
+        mainFrame.BackgroundTransparency = 1
+        titleLabel.BackgroundTransparency = 1
+        titleLabel.TextTransparency = 1
         
-        -- Ẩn các element khác
+        -- Ẩn tất cả trừ nút -
         for _, child in ipairs(mainFrame:GetChildren()) do
-            if child ~= titleLabel and child ~= minimizeButton then
+            if child ~= minimizeButton then
                 child.Visible = false
             end
         end
-    else
-        -- Mở rộng
-        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local tween = TweenService:Create(mainFrame, tweenInfo, {Size = UDim2.new(0, 300, 0, 400)})
-        tween:Play()
         
-        -- Hiện các element
+        -- Đặt lại vị trí nút -
+        minimizeButton.Position = UDim2.new(0, 0, 0, 0)
+        minimizeButton.Size = UDim2.new(0, 30, 0, 30)
+        minimizeButton.BackgroundColor3 = Color3.fromRGB(75, 0, 130)
+        minimizeButton.Text = "+"
+    else
+        -- Hiện lại toàn bộ GUI
+        mainFrame.Size = UDim2.new(0, 300, 0, 400)
+        mainFrame.BackgroundTransparency = 0
+        titleLabel.BackgroundTransparency = 0
+        titleLabel.TextTransparency = 0
+        
+        -- Hiện tất cả các element
         for _, child in ipairs(mainFrame:GetChildren()) do
             child.Visible = true
         end
+        
+        -- Đặt lại vị trí nút -
+        minimizeButton.Position = UDim2.new(1, -35, 0, 5)
+        minimizeButton.Size = UDim2.new(0, 30, 0, 30)
+        minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+        minimizeButton.Text = "-"
     end
 end
 
